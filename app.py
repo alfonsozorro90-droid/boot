@@ -1,0 +1,5 @@
+from bot_core.bootstrap import run_app
+
+
+if __name__ == "__main__":
+    run_app()

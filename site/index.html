@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Generador documental</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><h1 id="title">Generador documental</h1><p id="subtitle"></p></div>
+      <div class="actions"><a id="openDirect" href="#" target="_blank" rel="noopener">Abrir app directamente</a></div>
+    </header>
+    <section class="frame-wrap">
+      <div class="loading">Cargando la aplicación… Si Streamlit estaba en reposo, puede pedir reactivarla.</div>
+      <iframe id="appFrame" class="app-frame" title="Aplicación Streamlit" allow="clipboard-read; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script>
+    const cfg = window.BOT_CONFIG || {};
+    const base = String(cfg.streamlitUrl || '').replace(/\/$/, '');
+    document.getElementById('title').textContent = cfg.title || 'Generador documental';
+    document.getElementById('subtitle').textContent = cfg.subtitle || '';
+    document.title = cfg.title || 'Generador documental';
+    if (!/^https:\/\/[^/]+\.streamlit\.app$/i.test(base)) {
+      document.querySelector('.loading').innerHTML = 'Configura <strong>site/config.js</strong> con la URL pública de Streamlit.';
+      document.getElementById('appFrame').style.display = 'none';
+      document.getElementById('openDirect').style.display = 'none';
+    } else {
+      const embed = base + '/?embed=true&embed_options=hide_loading_screen';
+      document.getElementById('appFrame').src = embed;
+      document.getElementById('openDirect').href = base;
+    }
+  </script>
+</body>
+</html>

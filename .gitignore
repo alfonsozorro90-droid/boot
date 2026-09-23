@@ -1,0 +1,14 @@
+.streamlit/secrets.toml
+.env
+*.pem
+*service-account*.json
+credentials.json
+.video_checkpoints/
+.generated_documents/
+__pycache__/
+*.py[cod]
+*.mp4
+*.mov
+*.avi
+*.webm
+.DS_Store
