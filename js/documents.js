@@ -1,4 +1,4 @@
-import {xmlEsc, dataUrlToBytes, safeName, bytes, downloadBlob} from './utils.js';
+﻿import {xmlEsc, dataUrlToBytes, safeName, bytes, downloadBlob} from './utils.js';
 
 function p(text='',style='',opts={}){const st=style?`<w:pStyle w:val="${style}"/>`:'';const jc=opts.center?'<w:jc w:val="center"/>':'';const bold=opts.bold?'<w:b/>':'';const italic=opts.italic?'<w:i/>':'';const sz=opts.size?`<w:sz w:val="${opts.size}"/><w:szCs w:val="${opts.size}"/>`:'';return `<w:p><w:pPr>${st}${jc}</w:pPr><w:r><w:rPr>${bold}${italic}${sz}</w:rPr><w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`}
 function tableXml(t){const headers=t.headers||[],rows=t.rows||[];if(!headers.length)return'';const cell=v=>`<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${p(v)}</w:tc>`;const row=r=>`<w:tr>${r.map(cell).join('')}</w:tr>`;return `<w:tbl><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:color="AAB4C2"/><w:left w:val="single" w:sz="4" w:color="AAB4C2"/><w:bottom w:val="single" w:sz="4" w:color="AAB4C2"/><w:right w:val="single" w:sz="4" w:color="AAB4C2"/><w:insideH w:val="single" w:sz="4" w:color="D0D6DF"/><w:insideV w:val="single" w:sz="4" w:color="D0D6DF"/></w:tblBorders></w:tblPr>${row(headers)}${rows.map(r=>row([...r,...Array(Math.max(0,headers.length-r.length)).fill('')].slice(0,headers.length))).join('')}</w:tbl>`}
@@ -8,7 +8,7 @@ function minimalStyles(){return `<?xml version="1.0" encoding="UTF-8" standalone
 function minimalDoc(body,sectPr=''){return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}${sectPr||'<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'}</w:body></w:document>`}
 
 export async function createDocx(finalDoc,{templateFile=null,visualEvidence=[]}={}){
-  if(!window.JSZip)throw new Error('JSZip no cargó.');
+  if(!window.JSZip)throw new Error('JSZip no cargÃ³.');
   const zip=new JSZip(); let template=false; let originalDoc=''; let rels=''; let contentTypes=''; let sectPr='';
   if(templateFile&&/\.docx$/i.test(templateFile.name)){
     const z=await JSZip.loadAsync(await templateFile.arrayBuffer());
@@ -25,8 +25,8 @@ export async function createDocx(finalDoc,{templateFile=null,visualEvidence=[]}=
   if(!/Extension="jpg"/i.test(contentTypes)){contentTypes=contentTypes.replace('</Types>','<Default Extension="jpg" ContentType="image/jpeg"/></Types>');zip.file('[Content_Types].xml',contentTypes)}
   let maxRid=0;for(const m of rels.matchAll(/Id="rId(\d+)"/g))maxRid=Math.max(maxRid,Number(m[1]));let imgId=1000;let body='';let visualIndex=0;const visualSection=(finalDoc.sections||[]).reduce((best,s)=>((s.numbered_items||[]).length>(best?.numbered_items||[]).length?s:best),null);const visualSectionOrder=visualSection?.order;
   body+=p(finalDoc.title||'Documento generado','',{center:true,bold:true,size:34});if(finalDoc.subtitle)body+=p(finalDoc.subtitle,'',{center:true,italic:true});if(finalDoc.introductory_note)body+=p(finalDoc.introductory_note);
-  for(const sec of finalDoc.sections||[]){body+=p(`${sec.order}. ${sec.title}`,'',{bold:true,size:28});for(const x of sec.paragraphs||[])body+=p(x);for(let i=0;i<(sec.numbered_items||[]).length;i++){body+=p(`${sec.order}.${i+1}. ${sec.numbered_items[i]}`);const vis=Number(sec.order)===Number(visualSectionOrder)?visualEvidence[visualIndex++]:null;if(vis?.selected?.dataUrl){const rid=`rId${++maxRid}`;const fname=`media/evidence_${String(visualIndex).padStart(4,'0')}.jpg`;zip.file(`word/${fname}`,dataUrlToBytes(vis.selected.dataUrl));rels=rels.replace('</Relationships>',`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${fname}"/></Relationships>`);body+=imageXml(rid,++imgId,`${vis.action_id||'Evidencia'} ${vis.timestamp||''}`);body+=p(`Evidencia visual · ${vis.action_id||''} · ${vis.selected.timestamp||vis.timestamp||''}`,'',{center:true,italic:true,size:18})}}
-    for(const x of sec.bullets||[])body+=p(`• ${x}`);for(const t of sec.tables||[]){if(t.title)body+=p(t.title,'',{bold:true});body+=tableXml(t)}if((sec.source_basis||[]).length)body+=p(`Sustento: ${(sec.source_basis||[]).join(' | ')}`,'',{italic:true,size:18});
+  for(const sec of finalDoc.sections||[]){body+=p(`${sec.order}. ${sec.title}`,'',{bold:true,size:28});for(const x of sec.paragraphs||[])body+=p(x);for(let i=0;i<(sec.numbered_items||[]).length;i++){body+=p(`${sec.order}.${i+1}. ${sec.numbered_items[i]}`);const vis=Number(sec.order)===Number(visualSectionOrder)?visualEvidence[visualIndex++]:null;if(vis?.selected?.dataUrl){const rid=`rId${++maxRid}`;const fname=`media/evidence_${String(visualIndex).padStart(4,'0')}.jpg`;zip.file(`word/${fname}`,dataUrlToBytes(vis.selected.dataUrl));rels=rels.replace('</Relationships>',`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${fname}"/></Relationships>`);body+=imageXml(rid,++imgId,`${vis.action_id||'Evidencia'} ${vis.timestamp||''}`);body+=p(`Evidencia visual Â· ${vis.action_id||''} Â· ${vis.selected.timestamp||vis.timestamp||''}`,'',{center:true,italic:true,size:18})}}
+    for(const x of sec.bullets||[])body+=p(`â€¢ ${x}`);for(const t of sec.tables||[]){if(t.title)body+=p(t.title,'',{bold:true});body+=tableXml(t)}if((sec.source_basis||[]).length)body+=p(`Sustento: ${(sec.source_basis||[]).join(' | ')}`,'',{italic:true,size:18});
   }
   let docXml=minimalDoc(body,sectPr);
   if(template&&originalDoc){docXml=originalDoc.replace(/<w:body\b[^>]*>[\s\S]*?<\/w:body>/i,`<w:body>${body}${sectPr}</w:body>`)}
@@ -34,16 +34,126 @@ export async function createDocx(finalDoc,{templateFile=null,visualEvidence=[]}=
   return await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',compression:'DEFLATE',compressionOptions:{level:6}});
 }
 
+
+let jsPdfLoaderPromise = null;
+
+function loadExternalScript(src, marker) {
+  return new Promise((resolve, reject) => {
+
+    const existing = document.querySelector(
+      `script[data-loader="${marker}"]`
+    );
+
+    if (existing) {
+
+      if (window.jspdf?.jsPDF) {
+        resolve();
+        return;
+      }
+
+      existing.addEventListener(
+        'load',
+        resolve,
+        { once: true }
+      );
+
+      existing.addEventListener(
+        'error',
+        () => reject(
+          new Error(`No se pudo cargar ${src}`)
+        ),
+        { once: true }
+      );
+
+      return;
+    }
+
+    const script = document.createElement('script');
+
+    script.src = src;
+    script.async = true;
+    script.dataset.loader = marker;
+
+    script.onload = resolve;
+
+    script.onerror = () => reject(
+      new Error(`No se pudo cargar ${src}`)
+    );
+
+    document.head.appendChild(script);
+  });
+}
+
+async function getJsPDF() {
+
+  if (window.jspdf?.jsPDF) {
+    return window.jspdf.jsPDF;
+  }
+
+  if (!jsPdfLoaderPromise) {
+
+    jsPdfLoaderPromise = (async () => {
+
+      const providers = [
+
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js',
+
+        'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',
+
+        'https://unpkg.com/jspdf@4.2.1/dist/jspdf.umd.min.js'
+      ];
+
+      let lastError = null;
+
+      for (
+        let i = 0;
+        i < providers.length;
+        i++
+      ) {
+
+        try {
+
+          await loadExternalScript(
+            providers[i],
+            `jspdf-${i}`
+          );
+
+          if (window.jspdf?.jsPDF) {
+            return window.jspdf.jsPDF;
+          }
+
+        } catch (error) {
+
+          lastError = error;
+
+          console.warn(
+            `Proveedor jsPDF ${i + 1} no disponible`,
+            error
+          );
+        }
+      }
+
+      throw lastError ||
+        new Error(
+          'No fue posible cargar jsPDF.'
+        );
+    })();
+  }
+
+  return await jsPdfLoaderPromise;
+}
+
 export async function createPdf(finalDoc,{visualEvidence=[]}={}){
-  if(!window.jspdf?.jsPDF)throw new Error('jsPDF no cargó.');
-  const {jsPDF}=window.jspdf;const pdf=new jsPDF({unit:'mm',format:'a4'});const W=210,H=297,L=18,R=18,T=18,B=18;let y=T;let visualIndex=0;const visualSection=(finalDoc.sections||[]).reduce((best,s)=>((s.numbered_items||[]).length>(best?.numbered_items||[]).length?s:best),null);const visualSectionOrder=visualSection?.order;
+  const jsPDF = await getJsPDF();
+  const pdf=new jsPDF({unit:'mm',format:'a4'});const W=210,H=297,L=18,R=18,T=18,B=18;let y=T;let visualIndex=0;const visualSection=(finalDoc.sections||[]).reduce((best,s)=>((s.numbered_items||[]).length>(best?.numbered_items||[]).length?s:best),null);const visualSectionOrder=visualSection?.order;
   const pageBreak=(need=10)=>{if(y+need>H-B){pdf.addPage();y=T}};
   const text=(s,size=10,opts={})=>{pdf.setFont('helvetica',opts.bold?'bold':opts.italic?'italic':'normal');pdf.setFontSize(size);const lines=pdf.splitTextToSize(String(s||''),W-L-R);pageBreak(lines.length*5+3);pdf.text(lines,opts.center?W/2:L,y,{align:opts.center?'center':'left'});y+=lines.length*(size*.42)+3};
   text(finalDoc.title||'Documento generado',17,{bold:true,center:true});if(finalDoc.subtitle)text(finalDoc.subtitle,11,{italic:true,center:true});y+=3;if(finalDoc.introductory_note)text(finalDoc.introductory_note,10);
-  for(const sec of finalDoc.sections||[]){pageBreak(16);text(`${sec.order}. ${sec.title}`,13,{bold:true});for(const x of sec.paragraphs||[])text(x,10);for(let i=0;i<(sec.numbered_items||[]).length;i++){text(`${sec.order}.${i+1}. ${sec.numbered_items[i]}`,10);const vis=Number(sec.order)===Number(visualSectionOrder)?visualEvidence[visualIndex++]:null;if(vis?.selected?.dataUrl){pageBreak(58);try{pdf.addImage(vis.selected.dataUrl,'JPEG',L,y,W-L-R,50,undefined,'FAST');y+=53;text(`Evidencia visual · ${vis.action_id||''} · ${vis.selected.timestamp||vis.timestamp||''}`,8,{italic:true,center:true})}catch{}}}for(const x of sec.bullets||[])text(`• ${x}`,10);for(const t of sec.tables||[]){if(t.title)text(t.title,10,{bold:true});const rows=[t.headers||[],...(t.rows||[])].filter(r=>r.length);for(const row of rows){text(row.join('  |  '),8)} }if((sec.source_basis||[]).length)text(`Sustento: ${(sec.source_basis||[]).join(' | ')}`,8,{italic:true});}
-  const total=pdf.getNumberOfPages();for(let i=1;i<=total;i++){pdf.setPage(i);pdf.setFontSize(8);pdf.setTextColor(100);pdf.text(`Página ${i} de ${total}`,W-R,H-8,{align:'right'});pdf.setTextColor(0)}
+  for(const sec of finalDoc.sections||[]){pageBreak(16);text(`${sec.order}. ${sec.title}`,13,{bold:true});for(const x of sec.paragraphs||[])text(x,10);for(let i=0;i<(sec.numbered_items||[]).length;i++){text(`${sec.order}.${i+1}. ${sec.numbered_items[i]}`,10);const vis=Number(sec.order)===Number(visualSectionOrder)?visualEvidence[visualIndex++]:null;if(vis?.selected?.dataUrl){pageBreak(58);try{pdf.addImage(vis.selected.dataUrl,'JPEG',L,y,W-L-R,50,undefined,'FAST');y+=53;text(`Evidencia visual Â· ${vis.action_id||''} Â· ${vis.selected.timestamp||vis.timestamp||''}`,8,{italic:true,center:true})}catch{}}}for(const x of sec.bullets||[])text(`â€¢ ${x}`,10);for(const t of sec.tables||[]){if(t.title)text(t.title,10,{bold:true});const rows=[t.headers||[],...(t.rows||[])].filter(r=>r.length);for(const row of rows){text(row.join('  |  '),8)} }if((sec.source_basis||[]).length)text(`Sustento: ${(sec.source_basis||[]).join(' | ')}`,8,{italic:true});}
+  const total=pdf.getNumberOfPages();for(let i=1;i<=total;i++){pdf.setPage(i);pdf.setFontSize(8);pdf.setTextColor(100);pdf.text(`PÃ¡gina ${i} de ${total}`,W-R,H-8,{align:'right'});pdf.setTextColor(0)}
   return pdf.output('blob');
 }
 
 export function downloadOutputs({docxBlob,pdfBlob,title}){const base=safeName(title||'documento');if(docxBlob)downloadBlob(docxBlob,`${base}.docx`);if(pdfBlob)setTimeout(()=>downloadBlob(pdfBlob,`${base}.pdf`),250)}
 export {bytes};
+
