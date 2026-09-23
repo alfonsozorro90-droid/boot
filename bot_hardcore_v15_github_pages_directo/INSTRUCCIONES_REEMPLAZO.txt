@@ -1,0 +1,27 @@
+BOT HARDCORE V15 - REEMPLAZO COMPLETO PARA GITHUB PAGES
+
+1) Descomprime este ZIP.
+2) Abre config.js.
+3) Pega tu GEMINI_API_KEY.
+4) Si vas a usar videos de Google Drive, configura también GOOGLE_OAUTH_CLIENT_ID.
+5) BORRA el contenido anterior del repositorio (excepto .git si trabajas sobre la carpeta clonada).
+6) Copia TODO el contenido descomprimido a la raíz del repositorio.
+7) Ejecuta:
+
+   git add -A
+   git commit -m "feat: migrar bot V15 a GitHub Pages directo"
+   git push origin main
+
+8) En GitHub entra a:
+   Settings > Pages > Build and deployment > Source > GitHub Actions
+
+9) Espera a que el workflow "Deploy GitHub Pages" termine correctamente.
+10) Abre la URL github.io del repositorio.
+
+IMPORTANTE
+- index.html ya NO contiene iframe ni redirección a Streamlit.
+- app.py NO se ejecuta en GitHub Pages.
+- legacy_v15_python es solo respaldo del código anterior.
+- La aplicación principal está en index.html + css/ + js/.
+
+Lee README.md para la configuración de Drive y las diferencias técnicas de video/PDF.
