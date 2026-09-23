@@ -43,8 +43,22 @@ async function prepareSource(){let file=state.sourceFile;
   if(!file)throw new Error('Falta el archivo de origen.');
   if(isVideoName(file.name)||file.type.startsWith('video/')){
     state.videoFile=file;const fp=await sha256Blob(file);const cached=await idbGet(`video-transcript:${fp}`);
-    if(cached){state.videoTranscript=cached;setProgress(.47,'Transcripción de video recuperada del checkpoint local.')}else{
-      const {transcript}=await transcribeVideoWithGemini({apiKey:settings.apiKey,model:settings.videoModel,file,onProgress:m=>setProgress(.46,m)});state.videoTranscript=transcript;await idbSet(`video-transcript:${fp}`,transcript);
+    if(cached){state.videoTranscript=cached;setProgress(.56,'Transcripcion de video recuperada del checkpoint local.')}else{
+      const {transcript}=await transcribeVideoWithGemini({
+        apiKey:settings.apiKey,
+        model:settings.videoModel,
+        file,
+        onProgress:(message,p)=>{
+          const fraction=Number.isFinite(p)?p:.5;
+          setProgress(.32+(.24*fraction),message);
+        }
+      });
+      state.videoTranscript=transcript;
+      setProgress(
+        .56,
+        `Transcripcion lista: ${(transcript.actions||[]).length} acciones detectadas.`
+      );
+      await idbSet(`video-transcript:${fp}`,transcript);
     }
     const text=renderTranscriptAsSource(state.videoTranscript,file.name);state.sourceRecord={name:file.name,size:file.size,mime:file.type,extension:ext(file.name),kind:'video',fingerprint:fp,text,video_actions:state.videoTranscript.actions||[]};return state.sourceRecord;
   }

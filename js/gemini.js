@@ -1,4 +1,4 @@
-﻿import {cleanJsonText, sleep, normalizeArray, ensureText, unique} from './utils.js';
+import {cleanJsonText, sleep, normalizeArray, ensureText, unique} from './utils.js';
 
 let sdkPromise=null;
 async function sdk(){
@@ -18,21 +18,124 @@ function responseText(r){
   return parts.map(p=>p.text||'').join('\n');
 }
 
+function errorText(e){
+  return String(e?.message||e||'');
+}
+
+function isAuthError(msg){
+  return /401|403|UNAUTHENTICATED|PERMISSION_DENIED/i.test(msg);
+}
+
+function isPermanentModelError(msg){
+  return /400|404|INVALID_ARGUMENT|NOT_FOUND|not found|unsupported/i.test(msg);
+}
+
+function isRetryableError(msg){
+  return /408|429|500|502|503|504|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|temporar|timeout|network/i.test(msg);
+}
+
 async function generateJSON(ai, models, parts, opts={}){
   let last;
-  const candidates=unique((Array.isArray(models)?models:[models]).concat(['gemini-flash-latest','gemini-3.8-flash']));
-  for(const model of candidates){
-    try{
-      const r=await ai.models.generateContent({
-        model,
-        contents:[{role:'user',parts}],
-        config:{responseMimeType:'application/json',temperature:opts.temperature??0.15,maxOutputTokens:opts.maxOutputTokens??32768}
-      });
-      const text=responseText(r); const parsed=JSON.parse(cleanJsonText(text));
-      parsed.__model=model; return parsed;
-    }catch(e){last=e; const msg=String(e?.message||e); if(/400|INVALID_ARGUMENT|not found|unsupported/i.test(msg)) continue; await sleep(800)}
+
+  const candidates=unique(
+    (Array.isArray(models)?models:[models])
+      .concat([
+        'gemini-3.8-flash',
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite'
+      ])
+      .filter(Boolean)
+  );
+
+  // Reintentos con espera creciente. Para 503/429 no abortamos el proceso
+  // inmediatamente; primero reintentamos el mismo modelo y luego usamos fallback.
+  const delays=[0,1500,3500,7000,12000];
+
+  for(let modelIndex=0;modelIndex<candidates.length;modelIndex++){
+    const model=candidates[modelIndex];
+
+    for(let attempt=0;attempt<delays.length;attempt++){
+      if(delays[attempt]){
+        const jitter=Math.floor(Math.random()*700);
+        const waitMs=delays[attempt]+jitter;
+        opts.onRetry?.(
+          `Gemini esta ocupado. Reintento ${attempt}/${delays.length-1} con ${model} en ${Math.ceil(waitMs/1000)} s...`,
+          Math.min(1,attempt/(delays.length-1))
+        );
+        await sleep(waitMs);
+      }
+
+      let heartbeat=null;
+      let pulse=0;
+
+      try{
+        if(opts.onWait){
+          heartbeat=setInterval(()=>{
+            pulse=Math.min(.95,pulse+.06);
+            opts.onWait(`Gemini sigue procesando con ${model}...`,pulse);
+          },4000);
+        }
+
+        const r=await ai.models.generateContent({
+          model,
+          contents:[{role:'user',parts}],
+          config:{
+            responseMimeType:'application/json',
+            temperature:opts.temperature??0.15,
+            maxOutputTokens:opts.maxOutputTokens??32768
+          }
+        });
+
+        const text=responseText(r);
+        const parsed=JSON.parse(cleanJsonText(text));
+        parsed.__model=model;
+        return parsed;
+
+      }catch(e){
+        last=e;
+        const msg=errorText(e);
+
+        if(isAuthError(msg)){
+          throw e;
+        }
+
+        if(isPermanentModelError(msg)){
+          opts.onRetry?.(
+            `El modelo ${model} no admite esta solicitud. Probando otro modelo...`,
+            1
+          );
+          break;
+        }
+
+        if(isRetryableError(msg)){
+          if(attempt<delays.length-1){
+            continue;
+          }
+
+          opts.onRetry?.(
+            `${model} sigue sin disponibilidad. Cambiando al modelo de respaldo...`,
+            1
+          );
+          break;
+        }
+
+        // Respuesta JSON incompleta u otro fallo inesperado:
+        // damos un reintento antes de cambiar de modelo.
+        if(attempt<1){
+          await sleep(1200);
+          continue;
+        }
+
+        break;
+
+      }finally{
+        if(heartbeat) clearInterval(heartbeat);
+      }
+    }
   }
-  throw last||new Error('Gemini no devolviÃ³ JSON vÃ¡lido.');
+
+  throw last||new Error('Gemini no devolvio JSON valido.');
 }
 
 function guideCatalog(guides){return guides.map((g,i)=>`\n===== GUÃA ${i}: ${g.name} =====\n${g.text}\nESTRUCTURA LOCAL DETECTADA:\n${(g.structure||[]).map(h=>`${h.order}. ${h.title}`).join('\n')}`).join('\n')}
@@ -73,24 +176,103 @@ export async function auditWithGemini({apiKey,model,guides,source,analysis,docum
 
 export async function transcribeVideoWithGemini({apiKey,model,file,onProgress=()=>{}}){
   const ai=await createAI(apiKey);
-  onProgress('Subiendo video a Gemini Files APIâ€¦');
-  let remote=await ai.files.upload({file,config:{mimeType:file.type||'video/mp4',displayName:file.name||'video'}});
+
+  onProgress('Subiendo video a Gemini Files API...',.05);
+
+  let remote=await ai.files.upload({
+    file,
+    config:{
+      mimeType:file.type||'video/mp4',
+      displayName:file.name||'video'
+    }
+  });
+
   const name=remote.name;
+  onProgress('Video subido. Esperando procesamiento de Gemini...',.18);
+
   for(let i=0;i<180;i++){
     const state=String(remote.state||'').toUpperCase();
-    if(!state||state==='ACTIVE')break;
-    if(state==='FAILED')throw new Error(remote.error?.message||'Gemini no pudo procesar el video.');
-    onProgress(`Gemini estÃ¡ preparando el videoâ€¦ ${state}`); await sleep(2000); remote=await ai.files.get({name});
+
+    if(!state||state==='ACTIVE'){
+      break;
+    }
+
+    if(state==='FAILED'){
+      throw new Error(remote.error?.message||'Gemini no pudo procesar el video.');
+    }
+
+    // El porcentaje es estimado: Gemini no entrega progreso numerico de Files API.
+    const preparationProgress=Math.min(.50,.20+(i*.008));
+    onProgress(`Gemini esta preparando el video... ${state}`,preparationProgress);
+
+    await sleep(2000);
+    remote=await ai.files.get({name});
   }
-  if(String(remote.state||'ACTIVE').toUpperCase()!=='ACTIVE') throw new Error('El video no quedÃ³ listo en Gemini dentro del tiempo de espera.');
-  onProgress('Transcribiendo audio y construyendo inventario de accionesâ€¦');
-  const prompt=`Analiza TODO el video como auditor de procedimiento. No lo resumas. Identifica idioma, hablantes, transcripciÃ³n cronolÃ³gica y TODAS las acciones operativas atÃ³micas. Cada clic, selecciÃ³n, navegaciÃ³n, diligenciamiento, carga, validaciÃ³n o resultado diferenciable debe ser una acciÃ³n independiente. Asigna ACC-0001, ACC-0002... en orden. timestamp_start y timestamp_end deben ser HH:MM:SS absolutos del video. Incluye sistema, ruta/pantalla, elemento de interfaz, dato gestionado, validaciÃ³n, resultado, evidencia e incertidumbre cuando exista. Devuelve SOLO JSON:\n{\n "detected_language":"", "duration_estimate":"", "speakers":[], "full_transcript":"",\n "actions":[{"action_id":"ACC-0001","timestamp_start":"00:00:00","timestamp_end":"00:00:00","actor":"","system":"","location_path":"","action":"","interface_element":"","data_handled":"","validation":"","result":"","evidence":"","uncertainty":""}],\n "visual_evidence":[],"key_facts":[],"uncertainties":[]\n}`;
-  const out=await generateJSON(ai,[model,'gemini-3.8-flash'],[
-    {fileData:{fileUri:remote.uri,mimeType:remote.mimeType||file.type||'video/mp4'}},{text:prompt}
-  ],{maxOutputTokens:32768,temperature:0.05});
-  out.actions=normalizeArray(out.actions).map((a,i)=>({...a,action_id:`ACC-${String(i+1).padStart(4,'0')}`,timestamp_start:ensureText(a.timestamp_start),timestamp_end:ensureText(a.timestamp_end),action:ensureText(a.action)}));
-  out.speakers=normalizeArray(out.speakers);out.visual_evidence=normalizeArray(out.visual_evidence);out.key_facts=normalizeArray(out.key_facts);out.uncertainties=normalizeArray(out.uncertainties);
-  return {transcript:out,remoteFile:remote};
+
+  if(String(remote.state||'ACTIVE').toUpperCase()!=='ACTIVE'){
+    throw new Error('El video no quedo listo en Gemini dentro del tiempo de espera.');
+  }
+
+  onProgress('Video preparado. Iniciando transcripcion completa...',.55);
+
+  const prompt=`Analiza TODO el video como auditor de procedimiento. No lo resumas. Identifica idioma, hablantes, transcripcion cronologica y TODAS las acciones operativas atomicas. Cada clic, seleccion, navegacion, diligenciamiento, carga, validacion o resultado diferenciable debe ser una accion independiente. Asigna ACC-0001, ACC-0002... en orden. timestamp_start y timestamp_end deben ser HH:MM:SS absolutos del video. Incluye sistema, ruta/pantalla, elemento de interfaz, dato gestionado, validacion, resultado, evidencia e incertidumbre cuando exista. Devuelve SOLO JSON:
+{
+ "detected_language":"",
+ "duration_estimate":"",
+ "speakers":[],
+ "full_transcript":"",
+ "actions":[{"action_id":"ACC-0001","timestamp_start":"00:00:00","timestamp_end":"00:00:00","actor":"","system":"","location_path":"","action":"","interface_element":"","data_handled":"","validation":"","result":"","evidence":"","uncertainty":""}],
+ "visual_evidence":[],
+ "key_facts":[],
+ "uncertainties":[]
+}`;
+
+  const out=await generateJSON(
+    ai,
+    [model,'gemini-3.8-flash','gemini-3.6-flash','gemini-3.5-flash-lite'],
+    [
+      {
+        fileData:{
+          fileUri:remote.uri,
+          mimeType:remote.mimeType||file.type||'video/mp4'
+        }
+      },
+      {text:prompt}
+    ],
+    {
+      maxOutputTokens:32768,
+      temperature:0.05,
+      onWait:(message,p)=>{
+        onProgress(message,.58+(.18*p));
+      },
+      onRetry:(message,p)=>{
+        onProgress(message,.65+(.15*p));
+      }
+    }
+  );
+
+  out.actions=normalizeArray(out.actions).map((a,i)=>({
+    ...a,
+    action_id:`ACC-${String(i+1).padStart(4,'0')}`,
+    timestamp_start:ensureText(a.timestamp_start),
+    timestamp_end:ensureText(a.timestamp_end),
+    action:ensureText(a.action)
+  }));
+
+  out.speakers=normalizeArray(out.speakers);
+  out.visual_evidence=normalizeArray(out.visual_evidence);
+  out.key_facts=normalizeArray(out.key_facts);
+  out.uncertainties=normalizeArray(out.uncertainties);
+
+  onProgress(
+    `Transcripcion completada. ${out.actions.length} acciones operativas detectadas.`,
+    .86
+  );
+
+  return {
+    transcript:out,
+    remoteFile:remote
+  };
 }
 
 export function renderTranscriptAsSource(t,videoName){
